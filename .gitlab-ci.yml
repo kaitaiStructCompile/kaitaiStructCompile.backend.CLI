@@ -1,0 +1,50 @@
+image: registry.gitlab.com/kaitaistructcompile.py/kaitai_struct_python_docker:latest
+
+stages:
+  - build
+  - test
+
+variables:
+  GIT_DEPTH: "1"
+  DOCKER_DRIVER: overlay2
+  SAST_ANALYZER_IMAGE_TAG: latest
+  SAST_DISABLE_DIND: "true"
+  SAST_CONFIDENCE_LEVEL: 5
+  CODECLIMATE_VERSION: latest
+
+include:
+  - template: SAST.gitlab-ci.yml
+  - template: Code-Quality.gitlab-ci.yml
+
+
+build:
+  tags:
+    - shared
+    - linux
+  stage: build
+  variables:
+    PYTHONUSERBASE: "${CI_PROJECT_DIR}/python_user_packages"
+    KAITAI_STRUCT_COMPILE_FORCE_BACKEND: CLI
+
+  before_script:
+    - export PYTHON_MODULES_DIR=${PYTHONUSERBASE}/lib/python3.7/site-packages
+    - export EXECUTABLE_DEPENDENCIES_DIR=${PYTHONUSERBASE}/bin
+    - export PATH="$PATH:$EXECUTABLE_DEPENDENCIES_DIR" # don't move into `variables` any of them, it is unordered
+    - source ./.ci/before.sh
+
+  script:
+    - python3 ./setup.py bdist_wheel
+    - pip3 install --upgrade ./dist/*.whl
+    - coverage run --branch --source=kaitaiStructCompile -m pytest --junitxml=./rspec.xml $KSCP/tests/test.py
+    - mkdir ./wheels
+    - mv ./dist/*.whl ./wheels/kaitaiStructCompile.backend.CLI-0.CI-py3-none-any.whl
+
+  cache:
+    paths:
+      - /lib/python3*/site-packages
+      - tests/kaitai_struct_formats
+
+  artifacts:
+    paths:
+      - wheels
+      - tests/output
